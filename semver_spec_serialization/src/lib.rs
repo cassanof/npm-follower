@@ -1,11 +1,14 @@
-use std::string::FromUtf8Error;
+pub mod parser;
+
 use std::num::ParseIntError;
+use std::string::FromUtf8Error;
 
 use cached::proc_macro::cached;
 
 use lazy_regex::regex;
 
-use postgres_db::custom_types::{Semver, ParsedSpec, PrereleaseTag};
+use parser::SpecParser;
+use postgres_db::custom_types::{ParsedSpec, PrereleaseTag, Semver};
 
 #[derive(Debug)]
 pub enum ParseSemverError {
@@ -22,7 +25,7 @@ impl From<ParseIntError> for ParseSemverError {
 fn parse_prerelease_tag(s: &str) -> PrereleaseTag {
     match s.parse::<i32>() {
         Ok(n) => PrereleaseTag::Int(n),
-        Err(_) => PrereleaseTag::String(s.to_owned())
+        Err(_) => PrereleaseTag::String(s.to_owned()),
     }
 }
 
@@ -36,9 +39,14 @@ fn parse_build_tags(s: &str) -> Vec<String> {
 
 pub fn parse_semver(v_str: &str) -> Result<Semver, ParseSemverError> {
     // Modified from: https://github.com/npm/node-semver/blob/main/internal/re.js
-    let re = regex!(r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][a-zA-Z0-9-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][a-zA-Z0-9-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$");
+    let re = regex!(
+        r"^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][a-zA-Z0-9-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][a-zA-Z0-9-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+    );
 
-    let m = re.captures_iter(v_str.trim()).next().ok_or(ParseSemverError::RegexMatchFailed)?;
+    let m = re
+        .captures_iter(v_str.trim())
+        .next()
+        .ok_or(ParseSemverError::RegexMatchFailed)?;
 
     let m_1 = m.get(1).unwrap().as_str();
     let m_2 = m.get(2).unwrap().as_str();
@@ -48,18 +56,23 @@ pub fn parse_semver(v_str: &str) -> Result<Semver, ParseSemverError> {
     let m_2: i32 = m_2.parse()?;
     let m_3: i32 = m_3.parse()?;
 
-    let m_4 = m.get(4).map(|x| parse_prerelease_tags(x.as_str())).unwrap_or_default();
-    let m_5 = m.get(5).map(|x| parse_build_tags(x.as_str())).unwrap_or_default();
+    let m_4 = m
+        .get(4)
+        .map(|x| parse_prerelease_tags(x.as_str()))
+        .unwrap_or_default();
+    let m_5 = m
+        .get(5)
+        .map(|x| parse_build_tags(x.as_str()))
+        .unwrap_or_default();
 
     Ok(Semver {
         major: m_1,
         minor: m_2,
         bug: m_3,
         prerelease: m_4,
-        build: m_5
+        build: m_5,
     })
 }
-
 
 #[derive(Debug)]
 pub enum ParseSpecError {
@@ -67,7 +80,13 @@ pub enum ParseSpecError {
     Other(String),
     Encoding(FromUtf8Error),
     JsonParsing(serde_json::Error),
-    IO(std::io::Error)
+    IO(std::io::Error),
+}
+
+impl From<pest::error::Error<parser::Rule>> for ParseSpecError {
+    fn from(error: pest::error::Error<parser::Rule>) -> Self {
+        ParseSpecError::Other(format!("{}", error))
+    }
 }
 
 impl From<serde_json::Error> for ParseSpecError {
@@ -88,9 +107,16 @@ impl From<std::io::Error> for ParseSpecError {
     }
 }
 
-
-
 pub fn parse_spec_via_node(s: &str) -> Result<ParsedSpec, ParseSpecError> {
+    // TODO: remove when done
+    let mut failed = false;
+    match parse_spec_via_rust(s) {
+        Ok(s) => return Ok(s),
+        Err(_) => {
+            failed = true;
+        }
+    };
+
     use std::process::Command;
 
     let mut js_dir = std::env::current_dir()?;
@@ -105,29 +131,39 @@ pub fn parse_spec_via_node(s: &str) -> Result<ParsedSpec, ParseSpecError> {
         js_dir.push("js_parser");
     }
 
-    let output = Command::new("node")
-                                 .arg(js_dir)
-                                 .arg(s)
-                                 .output()?;
+    let output = Command::new("node").arg(js_dir).arg(s).output()?;
 
     if !output.status.success() {
-        return Err(ParseSpecError::Other(format!("stdout:\n{}\n\nstderr:\n{}", String::from_utf8(output.stdout)?, String::from_utf8(output.stderr)?)));
+        return Err(ParseSpecError::Other(format!(
+            "stdout:\n{}\n\nstderr:\n{}",
+            String::from_utf8(output.stdout)?,
+            String::from_utf8(output.stderr)?
+        )));
     }
 
     let parsed: ParsedSpec = serde_json::from_slice(&output.stdout)?;
 
+    // TODO: remove when done
+    if failed {
+        println!(
+            "------------\nFailed and fell back to node on: {}\nResulted in: {:?}\n------------",
+            s, parsed
+        );
+    }
+
     Ok(parsed)
 }
 
-
-#[cached(size=500_000, result = true, key = "String", convert = r#"{ String::from(s) }"#)]
+#[cached(
+    size = 500_000,
+    result = true,
+    key = "String",
+    convert = r#"{ String::from(s) }"#
+)]
 pub fn parse_spec_via_node_cached(s: &str) -> Result<ParsedSpec, ParseSpecError> {
     parse_spec_via_node(s)
 }
 
-
-
 pub fn parse_spec_via_rust(s: &str) -> Result<ParsedSpec, ParseSpecError> {
-    Err(ParseSpecError::Other("todo".into()))
+    SpecParser::parse_str(s)
 }
-

@@ -1,0 +1,30 @@
+// -------- PRIMITIVES ----------
+word = @{ ASCII_ALPHANUMERIC+ }
+number = @{ ASCII_DIGIT+ }
+
+
+// --------- FILE ---------
+
+any_except_slash = {
+    ("\\ ") | (!("/" | "\\") ~ ANY)
+}
+any_except_slash_or_dot = {
+    !"." ~ any_except_slash    
+}
+
+filename = @{ any_except_slash_or_dot+ ~ "." ~ (filename | any_except_slash_or_dot+) }
+dirname = @{ any_except_slash+ }
+
+pathexpr = {
+ ((any_except_slash+)? ~ ("/" | "\\")) ~ pathexpr? 
+}
+
+filepath = { pathexpr ~ filename }
+dirpath = { pathexpr ~ dirname }
+
+
+// ---------- MAIN ---------
+
+spectype = _{ filepath | dirpath } // here we have the internal grammar, of all the spec exprs
+
+spec = { SOI ~ spectype ~ EOI }
