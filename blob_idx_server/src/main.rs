@@ -1,5 +1,6 @@
 use blob_idx_server::{blob, http::HTTP, job::JobManagerConfig, ssh::SshSessionFactory};
 
+/// Awaits a shutdown signal from the OS, e.g. Ctrl-C
 async fn shutdown_signal() {
     tokio::signal::ctrl_c()
         .await

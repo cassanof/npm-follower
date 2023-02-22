@@ -47,7 +47,7 @@ pub struct JobManager {
     xfer_pool: WorkerPool,
     compute_pool: Arc<WorkerPool>,
     start_time: chrono::DateTime<chrono::Utc>,
-    metrics_logger: Mutex<metrics_logging::MetricsLogger>,
+    metrics_logger: Arc<Mutex<metrics_logging::MetricsLogger>>,
 }
 
 impl JobManager {
@@ -57,25 +57,6 @@ impl JobManager {
             "Initializing job manager with {} xfer workers and {} compute workers",
             config.max_xfer_worker_jobs, config.max_comp_worker_jobs
         );
-        let mut xfer_pool = WorkerPool::init(
-            config.max_xfer_worker_jobs,
-            "wp_xfer",
-            arc_ssh_factory.clone(),
-        )
-        .await;
-        xfer_pool
-            .populate()
-            .await
-            .expect("populate worker pool failed");
-
-        let mut compute_pool =
-            WorkerPool::init(config.max_comp_worker_jobs, "wp_comp", arc_ssh_factory).await;
-        compute_pool
-            .populate()
-            .await
-            .expect("populate worker pool failed");
-
-        println!("Job manager initialized");
 
         let start_time = chrono::Utc::now();
         let mut metrics_logger = metrics_logging::new_metrics_logger(false);
@@ -87,11 +68,39 @@ impl JobManager {
             },
         );
 
+        let metrics_logger = Arc::new(Mutex::new(metrics_logger));
+
+        let mut xfer_pool = WorkerPool::init(
+            config.max_xfer_worker_jobs,
+            "wp_xfer",
+            arc_ssh_factory.clone(),
+            metrics_logger.clone(),
+        )
+        .await;
+        xfer_pool
+            .populate()
+            .await
+            .expect("populate worker pool failed");
+
+        let mut compute_pool = WorkerPool::init(
+            config.max_comp_worker_jobs,
+            "wp_comp",
+            arc_ssh_factory,
+            metrics_logger.clone(),
+        )
+        .await;
+        compute_pool
+            .populate()
+            .await
+            .expect("populate worker pool failed");
+
+        println!("Job manager initialized");
+
         Self {
             xfer_pool,
             start_time,
             compute_pool: Arc::new(compute_pool),
-            metrics_logger: Mutex::new(metrics_logger),
+            metrics_logger,
         }
     }
 
