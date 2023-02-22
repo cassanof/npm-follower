@@ -87,6 +87,18 @@ pub struct RelationalDbPanicMetrics {
     pub panic_message: String,
 }
 
+pub struct JobSchedulerStartSessionMetrics {
+    pub session_start_time: DateTime<Utc>,
+    pub session_xfer_worker_num: usize,
+    pub session_comp_worker_num: usize,
+}
+
+pub struct JobSchedulerEndSessionMetrics {
+    pub session_start_time: DateTime<Utc>,
+    pub session_end_time: DateTime<Utc>,
+    pub session_total_duration: Duration,
+}
+
 pub trait MetricsLoggerTrait {
     fn log_diff_log_builder_batch_complete_metrics(&mut self, metrics: DiffLogBatchCompleteMetrics);
     fn log_diff_log_builder_start_session(&mut self, metrics: DiffLogStartSessionMetrics);
@@ -100,6 +112,9 @@ pub trait MetricsLoggerTrait {
     fn log_relational_db_builder_start_session(&mut self, metrics: RelationalDbStartSessionMetrics);
     fn log_relational_db_builder_end_session(&mut self, metrics: RelationalDbEndSessionMetrics);
     fn log_relational_db_builder_panic(&mut self, metrics: RelationalDbPanicMetrics);
+
+    fn log_job_scheduler_start_session(&mut self, metrics: JobSchedulerStartSessionMetrics);
+    fn log_job_scheduler_end_session(&mut self, metrics: JobSchedulerEndSessionMetrics);
 }
 
 pub struct MetricsLogger(Box<dyn MetricsLoggerTrait + Send>);
@@ -145,6 +160,14 @@ impl MetricsLoggerTrait for MetricsLogger {
 
     fn log_relational_db_builder_panic(&mut self, metrics: RelationalDbPanicMetrics) {
         self.0.log_relational_db_builder_panic(metrics)
+    }
+
+    fn log_job_scheduler_start_session(&mut self, metrics: JobSchedulerStartSessionMetrics) {
+        self.0.log_job_scheduler_start_session(metrics)
+    }
+
+    fn log_job_scheduler_end_session(&mut self, metrics: JobSchedulerEndSessionMetrics) {
+        self.0.log_job_scheduler_end_session(metrics)
     }
 }
 

@@ -1,7 +1,8 @@
 use crate::{
     DiffLogBatchCompleteMetrics, DiffLogEndSessionMetrics, DiffLogPanicMetrics,
-    DiffLogStartSessionMetrics, MetricsLoggerTrait, RelationalDbBatchCompleteMetrics,
-    RelationalDbEndSessionMetrics, RelationalDbPanicMetrics, RelationalDbStartSessionMetrics,
+    DiffLogStartSessionMetrics, JobSchedulerStartSessionMetrics, MetricsLoggerTrait,
+    RelationalDbBatchCompleteMetrics, RelationalDbEndSessionMetrics, RelationalDbPanicMetrics,
+    RelationalDbStartSessionMetrics, JobSchedulerEndSessionMetrics,
 };
 
 pub(crate) struct NullLogger;
@@ -40,4 +41,8 @@ impl MetricsLoggerTrait for NullLogger {
     fn log_relational_db_builder_end_session(&mut self, _metrics: RelationalDbEndSessionMetrics) {}
 
     fn log_relational_db_builder_panic(&mut self, _metrics: RelationalDbPanicMetrics) {}
+
+    fn log_job_scheduler_start_session(&mut self, _metrics: JobSchedulerStartSessionMetrics) {}
+
+    fn log_job_scheduler_end_session(&mut self, _metrics: JobSchedulerEndSessionMetrics) {}
 }

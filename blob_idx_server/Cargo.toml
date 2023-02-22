@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+metrics_logging = { path = "../metrics_logging" }
+
 async-trait = "0.1.58"
 chrono = "0.4.22"
 dashmap = "5.4.0"

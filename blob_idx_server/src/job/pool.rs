@@ -287,6 +287,16 @@ impl WorkerPool {
         self.spawn_worker().await?;
         Ok(())
     }
+
+    /// Shuts down the worker pool. Cancels all workers from discovery. Does not wait for them to
+    /// finish, or does not care if they are in queue or running.
+    pub async fn shutdown(&self) {
+        debug!("Shutting down {} worker pool, {} workers", self.name, self.pool.len());
+        for kv in self.pool.iter() {
+            let worker = kv.value();
+            worker.cancel(&*self.ssh_session).await.ok(); // ignore errors
+        }
+    }
 }
 
 pub(super) struct WorkerGuard {

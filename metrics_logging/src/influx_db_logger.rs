@@ -9,8 +9,9 @@ use tokio::runtime::Runtime;
 
 use crate::{
     DiffLogBatchCompleteMetrics, DiffLogEndSessionMetrics, DiffLogPanicMetrics,
-    DiffLogStartSessionMetrics, MetricsLoggerTrait, RelationalDbBatchCompleteMetrics,
-    RelationalDbEndSessionMetrics, RelationalDbPanicMetrics, RelationalDbStartSessionMetrics,
+    DiffLogStartSessionMetrics, JobSchedulerStartSessionMetrics, MetricsLoggerTrait,
+    RelationalDbBatchCompleteMetrics, RelationalDbEndSessionMetrics, RelationalDbPanicMetrics,
+    RelationalDbStartSessionMetrics, JobSchedulerEndSessionMetrics,
 };
 
 pub(crate) struct InfluxDbLogger {
@@ -408,6 +409,39 @@ impl MetricsLoggerTrait for InfluxDbLogger {
             .field("panic_on_diff_entry_id", metrics.panic_on_diff_entry_id)
             .field("panic_message", metrics.panic_message)
             .timestamp(metrics.panic_time.timestamp_nanos())
+            .build()
+            .unwrap();
+
+        self.write_data_point(p);
+    }
+
+    fn log_job_scheduler_start_session(&mut self, metrics: JobSchedulerStartSessionMetrics) {
+        let p = DataPoint::builder("job_scheduler_metrics")
+            .tag("event_type", "start_session")
+            .field("session_start_time", metrics.session_start_time.to_string())
+            .field("session_xfer_worker_num", metrics.session_xfer_worker_num as i64)
+            .field("session_comp_worker_num", metrics.session_comp_worker_num as i64)
+            .timestamp(metrics.session_start_time.timestamp_nanos())
+            .build()
+            .unwrap();
+
+        self.write_data_point(p);
+    }
+
+    fn log_job_scheduler_end_session(&mut self, metrics: JobSchedulerEndSessionMetrics) {
+        let p = DataPoint::builder("job_scheduler_metrics")
+            .tag("event_type", "end_session")
+            .field("session_start_time", metrics.session_start_time.to_string())
+            .field("session_end_time", metrics.session_end_time.to_string())
+            .field(
+                "session_total_duration",
+                metrics
+                    .session_total_duration
+                    .to_std()
+                    .unwrap()
+                    .as_secs_f64(),
+            )
+            .timestamp(metrics.session_end_time.timestamp_nanos())
             .build()
             .unwrap();
 

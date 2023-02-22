@@ -191,4 +191,15 @@ impl MetricsLoggerTrait for CsvLogger {
     fn log_relational_db_builder_panic(&mut self, _metrics: RelationalDbPanicMetrics) {
         todo!()
     }
+
+    fn log_job_scheduler_start_session(
+        &mut self,
+        _metrics: crate::JobSchedulerStartSessionMetrics,
+    ) {
+        todo!()
+    }
+
+    fn log_job_scheduler_end_session(&mut self, _metrics: crate::JobSchedulerEndSessionMetrics) {
+        todo!()
+    }
 }
