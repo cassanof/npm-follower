@@ -39,27 +39,29 @@ impl HTTP {
         blob_config: BlobStorageConfig,
         job_config: JobManagerConfig,
         shutdown_signal: impl Future<Output = ()>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<MakeSvc, Box<dyn std::error::Error + Send + Sync>> {
         let addr = SocketAddr::from_str(&format!("{}:{}", self.host, self.port))?;
 
-        let server = Server::bind(&addr).serve(MakeSvc {
+        let make_svc = MakeSvc {
             blob: Arc::new(BlobStorage::init(blob_config).await),
             job_manager: Arc::new(JobManager::init(job_config).await),
             api_key: self.api_key,
-        });
+        };
+
+        let server = Server::bind(&addr).serve(make_svc.clone());
 
         println!("Listening on http://{}", addr);
 
         server.with_graceful_shutdown(shutdown_signal).await?;
-        Ok(())
+        Ok(make_svc)
     }
 }
 
 /// Represents a service for the hyper http server
-struct Svc {
-    blob_store: Arc<BlobStorage>,
-    job_manager: Arc<JobManager>,
-    api_key: String,
+pub struct Svc {
+    pub blob_store: Arc<BlobStorage>,
+    pub job_manager: Arc<JobManager>,
+    pub api_key: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -337,10 +339,10 @@ mod routes {
 /// Represents a maker for a service for the hyper http server
 
 #[derive(Clone)]
-struct MakeSvc {
-    blob: Arc<BlobStorage>,
-    job_manager: Arc<JobManager>,
-    api_key: String,
+pub struct MakeSvc {
+    pub blob: Arc<BlobStorage>,
+    pub job_manager: Arc<JobManager>,
+    pub api_key: String,
 }
 
 impl From<MakeSvc> for Svc {

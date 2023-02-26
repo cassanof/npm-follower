@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use metrics_logging::{JobSchedulerEndSessionMetrics, MetricsLoggerTrait};
 use serde::{Deserialize, Serialize};
-use tokio::task::JoinHandle;
+use tokio::{sync::Mutex, task::JoinHandle};
 
 use crate::{
     debug,
@@ -45,6 +46,8 @@ pub struct JobManagerConfig {
 pub struct JobManager {
     xfer_pool: WorkerPool,
     compute_pool: Arc<WorkerPool>,
+    start_time: chrono::DateTime<chrono::Utc>,
+    metrics_logger: Arc<Mutex<metrics_logging::MetricsLogger>>,
 }
 
 impl JobManager {
@@ -54,10 +57,24 @@ impl JobManager {
             "Initializing job manager with {} xfer workers and {} compute workers",
             config.max_xfer_worker_jobs, config.max_comp_worker_jobs
         );
+
+        let start_time = chrono::Utc::now();
+        let mut metrics_logger = metrics_logging::new_metrics_logger(false);
+        metrics_logger.log_job_scheduler_start_session(
+            metrics_logging::JobSchedulerStartSessionMetrics {
+                session_start_time: start_time,
+                session_xfer_worker_num: config.max_xfer_worker_jobs,
+                session_comp_worker_num: config.max_comp_worker_jobs,
+            },
+        );
+
+        let metrics_logger = Arc::new(Mutex::new(metrics_logger));
+
         let mut xfer_pool = WorkerPool::init(
             config.max_xfer_worker_jobs,
             "wp_xfer",
             arc_ssh_factory.clone(),
+            metrics_logger.clone(),
         )
         .await;
         xfer_pool
@@ -65,8 +82,13 @@ impl JobManager {
             .await
             .expect("populate worker pool failed");
 
-        let mut compute_pool =
-            WorkerPool::init(config.max_comp_worker_jobs, "wp_comp", arc_ssh_factory).await;
+        let mut compute_pool = WorkerPool::init(
+            config.max_comp_worker_jobs,
+            "wp_comp",
+            arc_ssh_factory,
+            metrics_logger.clone(),
+        )
+        .await;
         compute_pool
             .populate()
             .await
@@ -76,7 +98,9 @@ impl JobManager {
 
         Self {
             xfer_pool,
+            start_time,
             compute_pool: Arc::new(compute_pool),
+            metrics_logger,
         }
     }
 
@@ -295,5 +319,21 @@ impl JobManager {
             ClientResponse::Message(_) => Ok(()),
             ClientResponse::Error(e) => Err(JobError::ClientError(e)),
         }
+    }
+
+    /// Shuts down the client. Sends a message to the logger and cancels all jobs in the pools.
+    pub async fn shutdown(&self) {
+        let end_time = chrono::Utc::now();
+        self.metrics_logger
+            .lock()
+            .await
+            .log_job_scheduler_end_session(JobSchedulerEndSessionMetrics {
+                session_start_time: self.start_time,
+                session_end_time: end_time,
+                session_total_duration: end_time - self.start_time,
+            });
+
+        self.xfer_pool.shutdown().await;
+        self.compute_pool.shutdown().await;
     }
 }

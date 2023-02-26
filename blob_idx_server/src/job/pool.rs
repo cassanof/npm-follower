@@ -35,6 +35,8 @@ pub(super) struct WorkerPool {
     ssh_session: Box<dyn Ssh>,
     /// ssh factory, for creating new ssh sessions.
     ssh_factory: Arc<Box<dyn SshFactory>>,
+    /// The metrics logger.
+    metrics_logger: Arc<Mutex<metrics_logging::MetricsLogger>>,
 }
 
 impl WorkerPool {
@@ -45,6 +47,7 @@ impl WorkerPool {
         max_worker_jobs: usize,
         pool_name: impl Into<String>,
         ssh_factory: Arc<Box<dyn SshFactory>>,
+        metrics_logger: Arc<Mutex<metrics_logging::MetricsLogger>>,
     ) -> Self {
         let name = pool_name.into();
         assert!(name.len() <= 8, "pool name too long");
@@ -63,6 +66,7 @@ impl WorkerPool {
             max_worker_jobs,
             ssh_session,
             ssh_factory,
+            metrics_logger,
         }
     }
 
@@ -286,6 +290,16 @@ impl WorkerPool {
         worker.cancel(&*self.ssh_session).await?;
         self.spawn_worker().await?;
         Ok(())
+    }
+
+    /// Shuts down the worker pool. Cancels all workers from discovery. Does not wait for them to
+    /// finish, or does not care if they are in queue or running.
+    pub async fn shutdown(&self) {
+        debug!("Shutting down {} worker pool, {} workers", self.name, self.pool.len());
+        for kv in self.pool.iter() {
+            let worker = kv.value();
+            worker.cancel(&*self.ssh_session).await.ok(); // ignore errors
+        }
     }
 }
 
